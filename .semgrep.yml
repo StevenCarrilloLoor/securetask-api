@@ -1,0 +1,52 @@
+# Reglas SAST personalizadas (Semgrep) para SecureTask API.
+# Complementan los rulesets del registro (p/default, p/python, p/security-audit).
+rules:
+  - id: sqli-fstring-in-sql-text
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL Injection (CWE-89): la consulta SQL se construye interpolando datos
+      con un f-string. Use parametros vinculados (bindparams) en lugar de f-strings.
+    metadata:
+      cwe: "CWE-89 Injection SQL"
+      owasp: "A03:2021 - Injection"
+    patterns:
+      - pattern: 'text(f"...")'
+
+  - id: command-injection-shell-true
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Command Injection (CWE-78): subprocess con shell=True e interpolacion de
+      datos. Use shell=False y pase los argumentos como lista.
+    metadata:
+      cwe: "CWE-78 OS Command Injection"
+      owasp: "A03:2021 - Injection"
+    patterns:
+      - pattern: 'subprocess.run(..., shell=True, ...)'
+
+  - id: weak-hash-md5
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Hash criptografico debil (CWE-327): MD5 es inseguro. Use SHA-256 o superior.
+    metadata:
+      cwe: "CWE-327 Weak Hash"
+    patterns:
+      - pattern: 'hashlib.md5(...)'
+
+  - id: hardcoded-secret-default
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Secreto embebido en el codigo (CWE-798): valor por defecto para una clave.
+      Inyecte el valor por variable de entorno y nunca lo suba al repositorio.
+    metadata:
+      cwe: "CWE-798 Hard-coded Credentials"
+    patterns:
+      - pattern-either:
+          - pattern: '$VAR = "..."'
+          - pattern: '$VAR: $T = "..."'
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '(?i)(secret|password|passwd|token|api_?key)'

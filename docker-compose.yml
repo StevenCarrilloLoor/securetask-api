@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # En producción, inyecte un SECRET_KEY fuerte por variable de entorno.
+      SECRET_KEY: "${SECRET_KEY:-dev-secret-change-me}"
+      DATABASE_URL: "sqlite:////data/securetask.db"
+    volumes:
+      - data:/data
+
+volumes:
+  data:

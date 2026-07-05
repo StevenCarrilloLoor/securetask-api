@@ -1,0 +1,10 @@
+[project]
+name = "securetask-api"
+version = "1.0.0"
+description = "API REST de gestión de tareas — caso de estudio DevSecOps (SAST en CI)."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
