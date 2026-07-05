@@ -1,131 +1,95 @@
-# SecureTask API — DevSecOps / SAST en CI
+# SecureTask API — CI/CD con enfoque DevSecOps
 
-API REST de **gestión de tareas** construida con **FastAPI**, usada como caso de estudio de
-**DevSecOps**: integra herramientas de **SAST (Static Application Security Testing)** dentro
-de un **pipeline de Integración Continua** en GitHub Actions.
+Pipeline de **integración y despliegue continuo (CI/CD)** con **DevSecOps** sobre una API REST
+real (**FastAPI**): la seguridad se integra en **todo** el ciclo —build, pruebas, SAST, DAST,
+integridad del artefacto— y llega hasta el **despliegue en Kubernetes** con estrategias de despliegue.
 
-> Curso: Procesos de Software (ISWZ 3205) · P3 · **Steven Carrillo**
-> Tarea: *Informe de cumplimiento DevOps con herramientas de gestión de vulnerabilidades.*
+> Proyecto Integrador Final · Procesos de Software (ISWZ 3205) · **Steven Carrillo**
 
-![CI DevSecOps](https://github.com/OWNER/securetask-api/actions/workflows/ci-devsecops.yml/badge.svg)
+![CI DevSecOps](https://github.com/StevenCarrilloLoor/securetask-api/actions/workflows/ci-devsecops.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
+![Kubernetes](https://img.shields.io/badge/deploy-Kubernetes-326CE5.svg)
 
 ---
 
-## 1. ¿Qué hace la aplicación?
+## 1. Aplicación
 
-Un servicio REST con autenticación **JWT** que permite a cada usuario registrar, listar,
-buscar, actualizar y eliminar sus tareas.
-
-| Método | Endpoint | Descripción |
-|---|---|---|
-| `POST` | `/api/v1/auth/register` | Crear una cuenta |
-| `POST` | `/api/v1/auth/login` | Obtener un token JWT |
-| `POST` | `/api/v1/tasks` | Crear una tarea |
-| `GET` | `/api/v1/tasks` | Listar mis tareas |
-| `GET` | `/api/v1/tasks/search?q=...` | Buscar tareas por título |
-| `GET/PATCH/DELETE` | `/api/v1/tasks/{id}` | Ver / actualizar / eliminar |
-| `POST` | `/api/v1/tasks/{id}/export` | Exportar una tarea |
-| `GET` | `/health` | Health check |
-
-Documentación interactiva (Swagger) disponible en `/docs` al levantar el servicio.
-
-## 2. Arquitectura del proyecto
+API REST de gestión de tareas con autenticación **JWT**: registro/login, y CRUD + búsqueda de tareas.
+Documentación interactiva (Swagger) en `/docs`. Health check en `/health`.
 
 ```
-securetask-api/
-├── app/
-│   ├── main.py            # App FastAPI + routers + lifespan
-│   ├── core/              # config, base de datos, seguridad (JWT/hash)
-│   ├── models/            # modelos SQLAlchemy (User, Task)
-│   ├── schemas/           # esquemas Pydantic (validación E/S)
-│   ├── crud/              # acceso a datos
-│   └── api/               # dependencias + routers (auth, tasks)
-├── tests/                 # pruebas con pytest (7 casos)
-├── .github/workflows/     # pipeline CI DevSecOps (build, tests y SAST)
-├── .semgrep.yml           # reglas SAST personalizadas (Semgrep)
-├── Dockerfile             # imagen (usuario no root)
-├── docker-compose.yml
-└── requirements*.txt
+app/            código (core, models, schemas, crud, api)   ·   tests/  pruebas (pytest)
+Dockerfile      imagen (usuario no root)                     ·   k8s/    manifiestos Kubernetes
+.github/workflows/ci-devsecops.yml   pipeline CI/CD DevSecOps (8 jobs)
+.semgrep.yml    reglas SAST propias (Semgrep)
 ```
 
-## 3. Cómo ejecutarlo
+## 2. Pipeline CI/CD DevSecOps (8 jobs)
 
-**Local (Python 3.12+):**
+Se ejecuta en cada `push`/`pull_request` a `main`:
+
+| Job | Fase | Herramienta | Salida |
+|---|---|---|---|
+| **build-test** | CI | pytest | pruebas verdes |
+| **codeql** | SAST | CodeQL v4 | alertas en *Security* |
+| **semgrep** | SAST | Semgrep (+reglas propias) | SARIF (artefacto + *Security*) |
+| **bandit** | SAST | Bandit | reporte TXT/JSON (artefacto) |
+| **gitleaks** | Secretos | GitLeaks | secret scanning |
+| **build-image** | Artefacto | Docker + Syft + SLSA | imagen GHCR + **SBOM** + **attestation** |
+| **dast** | DAST | OWASP ZAP | reporte HTML/MD (artefacto) |
+| **deploy-k8s** | Deploy | kind + kubectl | despliegue real + rolling update |
+
+**Integridad del artefacto (cadena de suministro):** la imagen se publica con un **SBOM (SPDX)** y una
+**attestation de procedencia SLSA** firmada por GitHub. Verificable con:
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+gh attestation verify oci://ghcr.io/stevencarrilloloor/securetask-api:latest --owner StevenCarrilloLoor
+```
+
+## 3. Despliegue en Kubernetes
+
+Manifiestos en [`k8s/`](k8s): `Deployment` (RollingUpdate, `maxUnavailable: 0` → cero downtime,
+pods no-root, sondas `/health`), `Service`, `Ingress`, `HPA` (2→6 réplicas) y `Secret`.
+
+- **En CI:** el job `deploy-k8s` crea un cluster **kind**, carga la imagen, aplica los manifiestos,
+  verifica el rollout y hace un smoke test.
+- **En local (Docker Desktop):** habilita Kubernetes en Docker Desktop y ejecuta:
+  ```bash
+  docker build -t securetask-api:ci .
+  kubectl apply -f k8s/namespace.yaml -f k8s/secret.yaml -f k8s/deployment.yaml -f k8s/service.yaml
+  kubectl -n securetask rollout status deploy/securetask-api
+  kubectl -n securetask port-forward svc/securetask-api 8080:80   # http://localhost:8080/health
+  ```
+  (o usa el script `k8s/deploy-local.ps1`).
+
+### Estrategias de despliegue
+- **Rolling Update** (implementada): reemplazo gradual sin downtime.
+- **Blue-Green** y **Canary** (documentadas con manifiestos en [`k8s/strategies/`](k8s/strategies)).
+
+## 4. Cómo ejecutarlo (local)
+
+```bash
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
-pytest -q                                           # correr las pruebas
-uvicorn app.main:app --reload                       # levantar la API -> http://localhost:8000/docs
+pytest -q
+uvicorn app.main:app --reload                          # http://localhost:8000/docs
+# o con Docker:
+docker compose up --build
 ```
 
-**Con Docker:**
-```bash
-docker compose up --build     # http://localhost:8000/docs
-```
+## 5. Herramientas y su propósito
 
----
+GitHub Actions (orquestador) · FastAPI + pytest (app y pruebas) · Docker + GHCR (artefacto) ·
+CodeQL / Semgrep / Bandit (SAST) · GitLeaks (secretos) · OWASP ZAP (DAST) ·
+Syft (SBOM) + attestation SLSA (integridad) · kind / kubectl / Kubernetes (despliegue).
 
-## 4. Pipeline CI/CD con enfoque DevSecOps
+## 6. Evidencias
 
-El workflow [`.github/workflows/ci-devsecops.yml`](.github/workflows/ci-devsecops.yml) se ejecuta
-en cada `push` y `pull_request` a `main`. Contiene 5 *jobs*:
+- **Pipeline:** pestaña *Actions* (corridas del workflow).
+- **SAST:** *Security → Code scanning* (CodeQL + Semgrep).
+- **Integridad:** [attestations](https://github.com/StevenCarrilloLoor/securetask-api/attestations) del repositorio.
+- **Artefactos descargables:** `semgrep-sast-report`, `bandit-sast-report`, `sbom-spdx`, `dast-zap-report`.
 
-| Job | Tipo | Qué hace |
-|---|---|---|
-| **build-test** | CI | Instala dependencias y corre `pytest` (calidad funcional). |
-| **codeql** | **SAST** | Análisis semántico con **CodeQL**; resultados en la pestaña *Security → Code scanning*. |
-| **semgrep** | **SAST** | **Semgrep** (reglas del registro + reglas propias); sube **SARIF como artefacto** y a Code Scanning. |
-| **bandit** | **SAST** | **Bandit** (SAST de Python); sube reporte **TXT + JSON como artefacto**. |
-| **gitleaks** | Secret Scanning | **GitLeaks** busca credenciales filtradas (bonus DevSecOps). |
+## 7. Licencia
 
-## 5. Herramienta SAST elegida y por qué
-
-Se eligió **CodeQL** como herramienta SAST principal, acompañada de **Semgrep** y **Bandit**
-(la buena práctica —y la recomendación de clase— es correr **dos herramientas SAST** para
-contrastar hallazgos y descartar falsos positivos: si ambas marcan lo mismo, la vulnerabilidad
-es real).
-
-- **CodeQL** — Motor SAST **nativo de GitHub**, estándar de la industria (lo usa el propio
-  GitHub). Hace **análisis de flujo de datos (taint tracking)**: sigue el dato desde la entrada
-  del usuario hasta el punto peligroso, por lo que detecta inyecciones con muy pocos falsos
-  positivos. **Gratis para repositorios públicos** y sus alertas quedan integradas en la pestaña
-  *Security*.
-- **Semgrep** — SAST **rápido basado en patrones**, open source, con miles de reglas de la
-  comunidad (`p/security-audit`, `p/python`) y **fácilmente extensible con reglas propias**
-  (ver `.semgrep.yml`). Genera **SARIF**, ideal como artefacto.
-- **Bandit** — SAST **específico de Python** (proyecto OpenStack), muy rápido y sin dependencias
-  externas. Excelente para CWE típicas de Python (subprocess, hashing débil, SQL por concatenación).
-- **GitLeaks** *(bonus)* — *Secret scanning*: detecta credenciales hardcodeadas en el código y el
-  historial de Git.
-
-## 6. Retroalimentación del SAST — hallazgos detectados
-
-El código incluye, de forma controlada, vulnerabilidades **realistas** para demostrar la
-detección. Las herramientas las reportan así:
-
-| # | Vulnerabilidad | CWE | Archivo | Detectada por |
-|---|---|---|---|---|
-| 1 | **SQL Injection** (consulta con f-string) | CWE-89 | `app/crud/task.py` (`search_tasks`) | CodeQL, Semgrep, Bandit (B608) |
-| 2 | **OS Command Injection** (`subprocess`, `shell=True`) | CWE-78 | `app/api/routes/tasks.py` (`export_task`) | CodeQL, Semgrep, Bandit (B602) |
-| 3 | **Hash criptográfico débil** (MD5) | CWE-327 | `app/api/routes/tasks.py` | Semgrep, Bandit (B324) |
-| 4 | **Secreto embebido por defecto** | CWE-798 | `app/core/config.py` (`SECRET_KEY`) | Semgrep (regla propia) |
-
-**Remediación (cómo se corregiría):**
-
-1. Usar **consultas parametrizadas** (bind params) en lugar de f-strings en el SQL.
-2. Ejecutar procesos con `shell=False` y **lista de argumentos**, validando la entrada.
-3. Reemplazar **MD5** por **SHA-256** (o `secrets.token_hex` si es un identificador).
-4. Inyectar `SECRET_KEY` por **variable de entorno**; nunca dejar un valor por defecto en el código.
-
-## 7. Evidencias y artefactos
-
-- **Pipeline:** pestaña **Actions** del repositorio (corridas del workflow).
-- **Alertas SAST:** pestaña **Security → Code scanning alerts** (CodeQL + Semgrep).
-- **Artefactos descargables** (al final de cada corrida, sección *Artifacts*):
-  `semgrep-sast-report` (SARIF + texto) y `bandit-sast-report` (TXT + JSON).
-
-## 8. Licencia
-
-Distribuido bajo licencia **MIT**. Ver [LICENSE](LICENSE).
+MIT — ver [LICENSE](LICENSE).
