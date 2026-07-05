@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: securetask-api
+  namespace: securetask
+  labels:
+    app: securetask-api
+spec:
+  type: ClusterIP
+  selector:
+    app: securetask-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000

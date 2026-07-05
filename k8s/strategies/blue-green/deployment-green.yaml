@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: securetask-api-green
+  namespace: securetask
+  labels: { app: securetask-api, version: green }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: securetask-api, version: green } }
+  template:
+    metadata:
+      labels: { app: securetask-api, version: green }
+    spec:
+      containers:
+        - name: api
+          image: securetask-api:green    # versión nueva, se prueba en paralelo
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }

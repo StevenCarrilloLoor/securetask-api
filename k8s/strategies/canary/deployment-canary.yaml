@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: securetask-api-canary
+  namespace: securetask
+  labels: { app: securetask-api, track: canary }
+spec:
+  replicas: 1                                    # ~20% del tráfico (1 de 5 pods)
+  selector: { matchLabels: { app: securetask-api, track: canary } }
+  template:
+    metadata:
+      labels: { app: securetask-api, track: canary }
+    spec:
+      containers:
+        - name: api
+          image: securetask-api:canary           # versión nueva, expuesta a una fracción
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }

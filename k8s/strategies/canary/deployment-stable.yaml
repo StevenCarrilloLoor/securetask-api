@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: securetask-api-stable
+  namespace: securetask
+  labels: { app: securetask-api, track: stable }
+spec:
+  replicas: 4                                    # ~80% del tráfico
+  selector: { matchLabels: { app: securetask-api, track: stable } }
+  template:
+    metadata:
+      labels: { app: securetask-api, track: stable }
+    spec:
+      containers:
+        - name: api
+          image: securetask-api:stable
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }

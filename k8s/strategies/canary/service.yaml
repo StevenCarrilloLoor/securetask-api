@@ -1,0 +1,10 @@
+# El servicio selecciona por app=securetask-api (SIN filtrar track), por lo que
+# balancea entre pods stable y canary. La proporción de tráfico = proporción de réplicas.
+apiVersion: v1
+kind: Service
+metadata:
+  name: securetask-api
+  namespace: securetask
+spec:
+  selector: { app: securetask-api }              # incluye stable + canary
+  ports: [{ port: 80, targetPort: 8000 }]

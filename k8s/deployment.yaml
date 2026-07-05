@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: securetask-api
+  namespace: securetask
+  labels:
+    app: securetask-api
+spec:
+  replicas: 2
+  # ---- ESTRATEGIA DE DESPLIEGUE: Rolling Update (sin downtime) ----
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # crea 1 pod nuevo extra durante la actualización
+      maxUnavailable: 0    # nunca deja menos réplicas de las deseadas -> cero downtime
+  selector:
+    matchLabels:
+      app: securetask-api
+  template:
+    metadata:
+      labels:
+        app: securetask-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: securetask-api:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: securetask-secrets
+                  key: SECRET_KEY
+            - name: DATABASE_URL
+              value: "sqlite:////data/securetask.db"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 8
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "96Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

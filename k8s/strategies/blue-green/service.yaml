@@ -1,0 +1,10 @@
+# El servicio enruta a UNA versión a la vez. El "switch" de tráfico se hace
+# cambiando el selector version: blue -> green (corte instantáneo, con rollback trivial).
+apiVersion: v1
+kind: Service
+metadata:
+  name: securetask-api
+  namespace: securetask
+spec:
+  selector: { app: securetask-api, version: blue }   # <-- cambiar a green para publicar
+  ports: [{ port: 80, targetPort: 8000 }]
