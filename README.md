@@ -68,6 +68,10 @@ pods no-root, sondas `/health`), `Service`, `Ingress`, `HPA` (2→6 réplicas) y
 
 ## 4. Cómo ejecutarlo (local)
 
+**Windows — un clic:** doble clic en **`EJECUTAR_APP.bat`** → crea el entorno, instala dependencias,
+arranca el servidor y abre la documentación interactiva (Swagger) en `http://localhost:8000/docs`.
+
+**Manual:**
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
