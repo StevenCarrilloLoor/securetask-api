@@ -9,6 +9,7 @@ venv/
 # Entorno y datos
 .env
 *.db
+*.db-journal
 *.sqlite3
 
 # Reportes locales de SAST
